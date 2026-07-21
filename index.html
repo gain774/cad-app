@@ -2,12 +2,16 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <title>CAD App</title>
   </head>
   <body>
     <div id="app">
       <header id="topbar">
+        <button id="panel-toggle" data-cmd="TOGGLE_PANEL" title="パネル" aria-label="パネル">☰</button>
         <div class="brand">CAD<span>App</span></div>
         <div class="toolgroup" id="file-tools">
           <button data-cmd="NEW" title="新規">新規</button>
@@ -21,6 +25,7 @@
         <div class="toolgroup" id="edit-tools">
           <button data-cmd="UNDO" title="元に戻す (Ctrl+Z)">↶</button>
           <button data-cmd="REDO" title="やり直し (Ctrl+Y)">↷</button>
+          <button data-cmd="ZOOM_EXTENTS" title="全体表示">⤢</button>
         </div>
       </header>
 
@@ -44,6 +49,7 @@
           <div id="coord-readout"></div>
         </div>
 
+        <div id="panel-backdrop"></div>
         <aside id="sidebar">
           <div class="panel">
             <h3>レイヤ</h3>

@@ -32,11 +32,17 @@ export class Editor {
   private lastPoint: Vec2 | null = null;
 
   private marquee: RenderState["marquee"] = null;
-  private panning = false;
   private dragging = false;
   private dragBase: Vec2 | null = null;
   private dragOriginals: Entity[] = [];
-  private mouseDownScreen: Vec2 | null = null;
+
+  // Multi-pointer / touch state.
+  private pointers = new Map<number, { x: number; y: number; type: string }>();
+  private gesture: { dist: number; mid: Vec2 } | null = null;
+  private opType: "tool" | "tool-tap" | "drag" | "marquee" | "pan" | null = null;
+  private opStart: Vec2 | null = null;
+  private opMoved = false;
+  private readonly tapSlop = 6;
 
   snapSettings: SnapSettings = {
     grid: true,
@@ -153,8 +159,11 @@ export class Editor {
     c.addEventListener("pointerdown", (e) => this.onPointerDown(e));
     c.addEventListener("pointermove", (e) => this.onPointerMove(e));
     c.addEventListener("pointerup", (e) => this.onPointerUp(e));
+    c.addEventListener("pointercancel", (e) => this.onPointerUp(e));
     c.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
     c.addEventListener("contextmenu", (e) => e.preventDefault());
+    // Prevent iOS Safari double-tap / pinch page zoom over the canvas.
+    c.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
   }
 
   private screenOf(e: PointerEvent): Vec2 {
@@ -183,26 +192,56 @@ export class Editor {
     this.requestRender();
   }
 
-  private onPointerDown(e: PointerEvent): void {
-    this.canvas.setPointerCapture(e.pointerId);
-    const screen = this.screenOf(e);
-    this.updateCursor(screen);
-    this.mouseDownScreen = screen;
+  private isTouch(e: PointerEvent): boolean {
+    return e.pointerType === "touch";
+  }
 
-    // Middle button or right button => pan.
-    if (e.button === 1 || e.button === 2) {
-      this.panning = true;
+  private onPointerDown(e: PointerEvent): void {
+    const screen = this.screenOf(e);
+    this.pointers.set(e.pointerId, { x: screen.x, y: screen.y, type: e.pointerType });
+    try {
+      this.canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+
+    // A second pointer starts a pinch/pan gesture and cancels any single-pointer op.
+    if (this.pointers.size >= 2) {
+      this.cancelSingleOp();
+      this.beginGesture();
       return;
     }
-    if (e.button !== 0) return;
+
+    this.updateCursor(screen);
+    this.opStart = screen;
+    this.opMoved = false;
+    const touch = this.isTouch(e);
+
+    // Mouse middle / right button => pan.
+    if (!touch && (e.button === 1 || e.button === 2)) {
+      this.opType = "pan";
+      return;
+    }
+    if (!touch && e.button !== 0) {
+      this.pointers.delete(e.pointerId);
+      return;
+    }
 
     if (this.tool) {
-      this.tool.onPoint(this.effectivePoint(), this.ctx());
-      this.lastPoint = this.effectivePoint();
+      if (touch) {
+        // Defer placement to a tap (pointerup); dragging just moves the rubber band.
+        this.opType = "tool-tap";
+        this.tool.onMove(this.effectivePoint(), this.ctx());
+      } else {
+        this.tool.onPoint(this.effectivePoint(), this.ctx());
+        this.lastPoint = this.effectivePoint();
+        this.opType = "tool";
+      }
+      this.requestRender();
       return;
     }
 
-    // Select mode: decide between pick+drag and marquee.
+    // Select mode.
     const hitId = this.hitTest(this.cursorRaw);
     if (hitId) {
       if (e.shiftKey) {
@@ -212,29 +251,39 @@ export class Editor {
         this.selection.clear();
         this.selection.add(hitId);
       }
-      // Prepare a possible drag-move of the current selection.
       this.dragBase = this.effectivePoint();
       this.dragOriginals = [...this.selection]
         .map((id) => this.doc.get(id))
         .filter((x): x is Entity => !!x);
+      this.opType = "drag";
       this.onStatusChange?.();
+    } else if (touch) {
+      // One finger on empty space pans the view (mobile-friendly default).
+      this.opType = "pan";
     } else {
       if (!e.shiftKey) this.selection.clear();
-      this.marquee = {
-        x0: screen.x,
-        y0: screen.y,
-        x1: screen.x,
-        y1: screen.y,
-        crossing: false,
-      };
+      this.marquee = { x0: screen.x, y0: screen.y, x1: screen.x, y1: screen.y, crossing: false };
+      this.opType = "marquee";
     }
     this.requestRender();
   }
 
   private onPointerMove(e: PointerEvent): void {
     const screen = this.screenOf(e);
+    const tracked = this.pointers.get(e.pointerId);
+    if (tracked) {
+      tracked.x = screen.x;
+      tracked.y = screen.y;
+    }
 
-    if (this.panning && this.mouseDownScreen) {
+    // Active pinch/pan gesture takes priority.
+    if (this.gesture && this.pointers.size >= 2) {
+      this.updateGesture();
+      return;
+    }
+
+    // Pan (mouse middle/right, or one-finger touch on empty space).
+    if (this.opType === "pan") {
       const dx = screen.x - this.cursorScreen.x;
       const dy = screen.y - this.cursorScreen.y;
       this.vp.panByScreen(dx, dy);
@@ -245,27 +294,24 @@ export class Editor {
 
     this.updateCursor(screen);
     this.onStatusChange?.();
+    if (this.opStart && distance(screen, this.opStart) > this.tapSlop) this.opMoved = true;
 
-    if (this.tool) {
-      this.tool.onMove(this.effectivePoint(), this.ctx());
+    if (this.opType === "tool" || this.opType === "tool-tap") {
+      this.tool?.onMove(this.effectivePoint(), this.ctx());
       this.requestRender();
       return;
     }
 
-    // Marquee update.
-    if (this.marquee && this.mouseDownScreen) {
+    if (this.opType === "marquee" && this.marquee && this.opStart) {
       this.marquee.x1 = screen.x;
       this.marquee.y1 = screen.y;
-      this.marquee.crossing = screen.x < this.mouseDownScreen.x;
+      this.marquee.crossing = screen.x < this.opStart.x;
       this.requestRender();
       return;
     }
 
-    // Drag-move of selection.
-    if (this.dragBase && this.mouseDownScreen) {
-      const movedFar =
-        distance(screen, this.mouseDownScreen) > 3 || this.dragging;
-      if (movedFar) {
+    if (this.opType === "drag" && this.dragBase) {
+      if (this.opMoved || this.dragging) {
         this.dragging = true;
         const d = sub(this.effectivePoint(), this.dragBase);
         this.preview = this.dragOriginals.map((en) => translateEntity(en, d));
@@ -274,11 +320,13 @@ export class Editor {
       return;
     }
 
-    // Hover feedback in select mode.
-    const hit = this.hitTest(this.cursorRaw);
-    if (hit !== this.hover) {
-      this.hover = hit;
-      this.requestRender();
+    // Hover feedback (mouse) in select mode.
+    if (!this.opType && !this.tool) {
+      const hit = this.hitTest(this.cursorRaw);
+      if (hit !== this.hover) {
+        this.hover = hit;
+        this.requestRender();
+      }
     }
   }
 
@@ -288,59 +336,116 @@ export class Editor {
     } catch {
       /* ignore */
     }
+    this.pointers.delete(e.pointerId);
 
-    if (this.panning) {
-      this.panning = false;
-      this.mouseDownScreen = null;
+    // Winding down a gesture: wait until all involved fingers lift before
+    // resuming single-pointer interaction, so a leftover finger doesn't jump.
+    if (this.gesture) {
+      if (this.pointers.size < 2) {
+        this.gesture = null;
+        this.opType = null;
+        this.opStart = null;
+        this.opMoved = false;
+      }
       return;
     }
 
-    // Finalize marquee selection.
-    if (this.marquee && this.mouseDownScreen) {
-      const a = this.vp.screenToWorld({ x: this.marquee.x0, y: this.marquee.y0 });
-      const b = this.vp.screenToWorld({ x: this.marquee.x1, y: this.marquee.y1 });
-      const region: Bounds = {
-        minX: Math.min(a.x, b.x),
-        minY: Math.min(a.y, b.y),
-        maxX: Math.max(a.x, b.x),
-        maxY: Math.max(a.y, b.y),
-      };
-      const crossing = this.marquee.crossing;
-      const ids = this.doc.queryIds(region);
-      for (const id of ids) {
-        const en = this.doc.get(id);
-        if (!en || !this.doc.isLayerVisible(en.layer)) continue;
-        const eb = entityBounds(en);
-        const inside = crossing
-          ? boundsIntersect(eb, region)
-          : eb.minX >= region.minX &&
-            eb.maxX <= region.maxX &&
-            eb.minY >= region.minY &&
-            eb.maxY <= region.maxY;
-        if (inside) this.selection.add(id);
-      }
-      this.marquee = null;
-      this.mouseDownScreen = null;
-      this.onStatusChange?.();
-      this.requestRender();
-      return;
-    }
-
-    // Commit a drag-move.
-    if (this.dragging && this.dragBase) {
-      const d = sub(this.effectivePoint(), this.dragBase);
-      if (d.x !== 0 || d.y !== 0) {
-        const moved = this.dragOriginals.map((en) => translateEntity(en, d));
-        this.history.execute(new ReplaceEntities(this.dragOriginals, moved));
-      }
+    switch (this.opType) {
+      case "tool-tap":
+        if (!this.opMoved && this.tool) {
+          this.tool.onPoint(this.effectivePoint(), this.ctx());
+          this.lastPoint = this.effectivePoint();
+        }
+        break;
+      case "marquee":
+        this.finalizeMarquee();
+        break;
+      case "drag":
+        if (this.dragging && this.dragBase) {
+          const d = sub(this.effectivePoint(), this.dragBase);
+          if (d.x !== 0 || d.y !== 0) {
+            const moved = this.dragOriginals.map((en) => translateEntity(en, d));
+            this.history.execute(new ReplaceEntities(this.dragOriginals, moved));
+          }
+        }
+        this.preview = [];
+        break;
     }
 
     this.dragging = false;
     this.dragBase = null;
     this.dragOriginals = [];
-    this.preview = [];
-    this.mouseDownScreen = null;
+    this.opType = null;
+    this.opStart = null;
+    this.opMoved = false;
     this.requestRender();
+  }
+
+  private finalizeMarquee(): void {
+    if (!this.marquee) return;
+    const a = this.vp.screenToWorld({ x: this.marquee.x0, y: this.marquee.y0 });
+    const b = this.vp.screenToWorld({ x: this.marquee.x1, y: this.marquee.y1 });
+    const region: Bounds = {
+      minX: Math.min(a.x, b.x),
+      minY: Math.min(a.y, b.y),
+      maxX: Math.max(a.x, b.x),
+      maxY: Math.max(a.y, b.y),
+    };
+    const crossing = this.marquee.crossing;
+    for (const id of this.doc.queryIds(region)) {
+      const en = this.doc.get(id);
+      if (!en || !this.doc.isLayerVisible(en.layer)) continue;
+      const eb = entityBounds(en);
+      const inside = crossing
+        ? boundsIntersect(eb, region)
+        : eb.minX >= region.minX &&
+          eb.maxX <= region.maxX &&
+          eb.minY >= region.minY &&
+          eb.maxY <= region.maxY;
+      if (inside) this.selection.add(id);
+    }
+    this.marquee = null;
+    this.onStatusChange?.();
+  }
+
+  // --- multi-touch gesture (pinch zoom + two-finger pan) --------------------
+
+  private twoPointers(): Array<{ x: number; y: number }> {
+    return [...this.pointers.values()].slice(0, 2);
+  }
+
+  private beginGesture(): void {
+    const [a, b] = this.twoPointers();
+    if (!a || !b) return;
+    this.gesture = {
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    };
+  }
+
+  private updateGesture(): void {
+    if (!this.gesture) return;
+    const [a, b] = this.twoPointers();
+    if (!a || !b) return;
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    // Two-finger pan by the midpoint delta, then pinch-zoom about the new midpoint.
+    this.vp.panByScreen(mid.x - this.gesture.mid.x, mid.y - this.gesture.mid.y);
+    if (this.gesture.dist > 1) this.vp.zoomAt(mid, dist / this.gesture.dist);
+    this.gesture.dist = dist;
+    this.gesture.mid = mid;
+    this.requestRender();
+  }
+
+  private cancelSingleOp(): void {
+    this.marquee = null;
+    this.dragging = false;
+    this.dragBase = null;
+    this.dragOriginals = [];
+    this.preview = [];
+    this.opType = null;
+    this.opStart = null;
+    this.opMoved = false;
   }
 
   /** Nearest entity within a screen-pixel tolerance of the world point. */

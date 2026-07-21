@@ -115,8 +115,16 @@ function runNamedCommand(cmd: string): void {
     case "ZOOM_EXTENTS":
       editor.zoomExtents();
       break;
+    case "TOGGLE_PANEL":
+      document.body.classList.toggle("panel-open");
+      break;
   }
 }
+
+// Close the mobile drawer when tapping the backdrop.
+document.getElementById("panel-backdrop")?.addEventListener("click", () => {
+  document.body.classList.remove("panel-open");
+});
 
 // Register command-line aliases (AutoCAD-style keywords).
 editor.commandHandlers = {
@@ -341,3 +349,6 @@ function seedDemo(): void {
 refreshLayers();
 editor.onStatusChange();
 editor.zoomExtents();
+
+// Expose the editor for debugging / embedding.
+(window as unknown as { cadEditor: Editor }).cadEditor = editor;
