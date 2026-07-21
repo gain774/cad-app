@@ -1,0 +1,272 @@
+:root {
+  --bg: #1e1e22;
+  --panel: #26262b;
+  --panel-2: #2d2d34;
+  --border: #38383f;
+  --text: #e8e8ea;
+  --muted: #9a9aa2;
+  --accent: #8ab4f8;
+  --accent-2: #ffb454;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", Meiryo, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+}
+
+/* --- top bar --- */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 16px;
+}
+.brand span {
+  color: var(--accent);
+}
+.toolgroup {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.toolgroup .sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+button:hover {
+  background: #363640;
+  border-color: #4a4a55;
+}
+button:active {
+  background: #40404c;
+}
+
+/* --- workspace --- */
+#workspace {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  min-height: 0;
+}
+
+#toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  width: 108px;
+}
+#toolbar button {
+  text-align: left;
+  padding: 7px 9px;
+}
+#toolbar button.active {
+  background: var(--accent);
+  color: #11131a;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+#toolbar .sep-v {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 2px;
+}
+
+#canvas-host {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+#cad-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+#coord-readout {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(20, 20, 24, 0.7);
+  padding: 3px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+#sidebar {
+  width: 232px;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  padding: 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.panel h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+.panel label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.panel .grid-size {
+  margin-top: 6px;
+}
+.panel .grid-size input {
+  width: 64px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* layers */
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  margin-bottom: 2px;
+  cursor: pointer;
+}
+.layer-row:hover {
+  background: var(--panel-2);
+}
+.layer-row.active {
+  background: #34343d;
+  outline: 1px solid var(--accent);
+}
+.layer-vis {
+  padding: 1px 5px;
+  font-size: 12px;
+  min-width: 26px;
+}
+.layer-color {
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+}
+.layer-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layer-del {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+#add-layer {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+}
+#stats {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+#stats b {
+  color: var(--text);
+}
+
+/* --- status bar --- */
+#statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+#prompt-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+#prompt-label {
+  color: var(--accent-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+#command-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: "Consolas", "SF Mono", monospace;
+}
+#command-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#status-right {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

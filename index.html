@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CAD App</title>
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar">
+        <div class="brand">CAD<span>App</span></div>
+        <div class="toolgroup" id="file-tools">
+          <button data-cmd="NEW" title="新規">新規</button>
+          <button data-cmd="OPEN" title="開く (JSON)">開く</button>
+          <button data-cmd="SAVE" title="保存 (JSON)">保存</button>
+          <span class="sep"></span>
+          <button data-cmd="IMPORT_DXF" title="DXF 読込">DXF読込</button>
+          <button data-cmd="EXPORT_DXF" title="DXF 書出">DXF書出</button>
+          <button data-cmd="EXPORT_SVG" title="SVG 書出">SVG書出</button>
+        </div>
+        <div class="toolgroup" id="edit-tools">
+          <button data-cmd="UNDO" title="元に戻す (Ctrl+Z)">↶</button>
+          <button data-cmd="REDO" title="やり直し (Ctrl+Y)">↷</button>
+        </div>
+      </header>
+
+      <div id="workspace">
+        <aside id="toolbar">
+          <button data-tool="select" class="active" title="選択 (Esc)">▏選択</button>
+          <button data-tool="line" title="線 (L)">╱ 線</button>
+          <button data-tool="polyline" title="連続線 (P)">⌇ 連続線</button>
+          <button data-tool="rect" title="矩形 (R)">▭ 矩形</button>
+          <button data-tool="circle" title="円 (C)">◯ 円</button>
+          <button data-tool="arc" title="円弧 (A)">◜ 円弧</button>
+          <button data-tool="text" title="文字 (T)">A 文字</button>
+          <span class="sep-v"></span>
+          <button data-cmd="MOVE" title="移動 (M)">✥ 移動</button>
+          <button data-cmd="COPY" title="複写 (CO)">⧉ 複写</button>
+          <button data-cmd="ERASE" title="削除 (Del)">✕ 削除</button>
+        </aside>
+
+        <div id="canvas-host">
+          <canvas id="cad-canvas"></canvas>
+          <div id="coord-readout"></div>
+        </div>
+
+        <aside id="sidebar">
+          <div class="panel">
+            <h3>レイヤ</h3>
+            <div id="layer-list"></div>
+            <button id="add-layer">＋ レイヤ追加</button>
+          </div>
+          <div class="panel">
+            <h3>スナップ</h3>
+            <label><input type="checkbox" id="snap-grid" checked /> グリッド</label>
+            <label><input type="checkbox" id="snap-end" checked /> 端点</label>
+            <label><input type="checkbox" id="snap-mid" checked /> 中点</label>
+            <label><input type="checkbox" id="snap-center" checked /> 中心</label>
+            <label><input type="checkbox" id="snap-intersect" checked /> 交点</label>
+            <label class="grid-size">グリッド間隔 <input type="number" id="grid-size" value="10" min="0.001" step="1" /></label>
+          </div>
+          <div class="panel">
+            <h3>情報</h3>
+            <div id="stats"></div>
+          </div>
+        </aside>
+      </div>
+
+      <footer id="statusbar">
+        <div id="prompt-line">
+          <span id="prompt-label">コマンド:</span>
+          <input id="command-input" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="コマンドまたは座標を入力 (例: LINE, 100,50, @50,0, @100&lt;45)" />
+        </div>
+        <div id="status-right">
+          <span id="mouse-coords">0.000, 0.000</span>
+        </div>
+      </footer>
+    </div>
+
+    <input type="file" id="file-input" accept=".json,.dxf" style="display:none" />
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

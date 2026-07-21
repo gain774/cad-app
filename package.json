@@ -1,0 +1,16 @@
+{
+  "name": "cad-app",
+  "version": "0.1.0",
+  "description": "A lightweight 2D CAD application (JWW/AutoCAD-style) for the web",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  }
+}
