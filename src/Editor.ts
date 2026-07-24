@@ -13,6 +13,9 @@ import { Renderer, type RenderState } from "./render/Renderer.ts";
 import { SnapEngine, type SnapResult, type SnapSettings } from "./snap/SnapEngine.ts";
 import type { EditorContext, Tool } from "./tools/Tool.ts";
 import { parseInput, resolvePoint } from "./ui/coordinates.ts";
+import type { Viewer3D } from "./render3d/Viewer3D.ts";
+
+export type ViewMode = "2d" | "3d";
 
 export class Editor {
   doc = new CadDocument();
@@ -55,10 +58,16 @@ export class Editor {
 
   private renderScheduled = false;
 
+  // 2D / 3D view mode.
+  mode: ViewMode = "2d";
+  private viewer3d: Viewer3D | null = null;
+  showGrid = true;
+
   // UI callbacks (wired up by main.ts).
   onPromptChange: ((text: string) => void) | null = null;
   onStatusChange: (() => void) | null = null;
   onToolChange: ((name: string) => void) | null = null;
+  onModeChange: ((mode: ViewMode) => void) | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas, this.doc, this.vp);
@@ -69,10 +78,12 @@ export class Editor {
     this.doc.onChange(() => {
       this.onStatusChange?.();
       this.requestRender();
+      this.refresh3D();
     });
     this.history.onChange = () => {
       this.onStatusChange?.();
       this.requestRender();
+      this.refresh3D();
     };
     this.requestRender();
   }
@@ -136,7 +147,7 @@ export class Editor {
         marquee: this.marquee,
         cursor: this.cursorRaw,
         gridSize: this.snapSettings.gridSize,
-        showGrid: true,
+        showGrid: this.showGrid,
       });
     });
   }
@@ -144,12 +155,62 @@ export class Editor {
   resize(): void {
     this.renderer.resize();
     this.requestRender();
+    if (this.mode === "3d") this.viewer3d?.resize();
   }
 
   zoomExtents(): void {
+    if (this.mode === "3d") {
+      this.viewer3d?.frameContent();
+      return;
+    }
     const b = this.doc.totalBounds();
     this.vp.fit(b);
     this.requestRender();
+  }
+
+  // --- 2D / 3D mode ---------------------------------------------------------
+
+  private viewerPromise: Promise<Viewer3D> | null = null;
+
+  /** Lazily import Three.js + the 3D viewer only when 3D is first used. */
+  private ensureViewer(): Promise<Viewer3D> {
+    if (this.viewer3d) return Promise.resolve(this.viewer3d);
+    if (!this.viewerPromise) {
+      this.viewerPromise = import("./render3d/Viewer3D.ts").then(({ Viewer3D }) => {
+        const host = this.canvas.parentElement!;
+        this.viewer3d = new Viewer3D(host, this.doc);
+        return this.viewer3d;
+      });
+    }
+    return this.viewerPromise;
+  }
+
+  async setMode(mode: ViewMode): Promise<void> {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    this.onModeChange?.(mode);
+    if (mode === "3d") {
+      const v = await this.ensureViewer();
+      if (this.mode === "3d") v.activate();
+    } else {
+      this.viewer3d?.deactivate();
+    }
+  }
+
+  toggleMode(): void {
+    void this.setMode(this.mode === "2d" ? "3d" : "2d");
+  }
+
+  /** Rebuild the 3D model from the current document (call after edits). */
+  refresh3D(): void {
+    if (this.mode === "3d" && this.viewer3d) {
+      this.viewer3d.rebuild();
+    }
+  }
+
+  async setStandardView3D(view: "top" | "front" | "right" | "iso"): Promise<void> {
+    const v = await this.ensureViewer();
+    v.setStandardView(view);
   }
 
   // --- input ----------------------------------------------------------------
@@ -171,15 +232,29 @@ export class Editor {
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
 
+  snapPixelTolerance = 12;
+
   private updateCursor(screen: Vec2): void {
     this.cursorScreen = screen;
     this.cursorRaw = this.vp.screenToWorld(screen);
-    this.snapResult = this.snap.resolve(this.cursorRaw, this.snapSettings);
+    this.snapResult = this.snap.resolve(this.cursorRaw, this.snapSettings, this.snapPixelTolerance);
   }
 
   /** The point the tools should use: snapped if available, else raw. */
   private effectivePoint(): Vec2 {
     return this.snapResult?.point ?? this.cursorRaw;
+  }
+
+  /** Ortho (直交) mode: constrain to horizontal/vertical from the last point. */
+  ortho = false;
+  private toolPoint(): Vec2 {
+    const p = this.effectivePoint();
+    if (this.ortho && this.lastPoint) {
+      const dx = Math.abs(p.x - this.lastPoint.x);
+      const dy = Math.abs(p.y - this.lastPoint.y);
+      return dx >= dy ? { x: p.x, y: this.lastPoint.y } : { x: this.lastPoint.x, y: p.y };
+    }
+    return p;
   }
 
   private onWheel(e: WheelEvent): void {
@@ -231,10 +306,11 @@ export class Editor {
       if (touch) {
         // Defer placement to a tap (pointerup); dragging just moves the rubber band.
         this.opType = "tool-tap";
-        this.tool.onMove(this.effectivePoint(), this.ctx());
+        this.tool.onMove(this.toolPoint(), this.ctx());
       } else {
-        this.tool.onPoint(this.effectivePoint(), this.ctx());
-        this.lastPoint = this.effectivePoint();
+        const p = this.toolPoint();
+        this.tool.onPoint(p, this.ctx());
+        this.lastPoint = p;
         this.opType = "tool";
       }
       this.requestRender();
@@ -297,7 +373,7 @@ export class Editor {
     if (this.opStart && distance(screen, this.opStart) > this.tapSlop) this.opMoved = true;
 
     if (this.opType === "tool" || this.opType === "tool-tap") {
-      this.tool?.onMove(this.effectivePoint(), this.ctx());
+      this.tool?.onMove(this.toolPoint(), this.ctx());
       this.requestRender();
       return;
     }
@@ -353,8 +429,9 @@ export class Editor {
     switch (this.opType) {
       case "tool-tap":
         if (!this.opMoved && this.tool) {
-          this.tool.onPoint(this.effectivePoint(), this.ctx());
-          this.lastPoint = this.effectivePoint();
+          const p = this.toolPoint();
+          this.tool.onPoint(p, this.ctx());
+          this.lastPoint = p;
         }
         break;
       case "marquee":
@@ -498,6 +575,12 @@ export class Editor {
       this.history.redo();
       return;
     }
+    if (e.key === "F8") {
+      e.preventDefault();
+      this.ortho = !this.ortho;
+      this.onStatusChange?.();
+      return;
+    }
   }
 
   /** Process a command-line submission (coordinate or command keyword). */
@@ -563,6 +646,19 @@ export class Editor {
     return this.selection.size;
   }
 
+  /** Entities currently selected (for the properties panel). */
+  selectedEntities(): Entity[] {
+    return [...this.selection]
+      .map((id) => this.doc.get(id))
+      .filter((e): e is Entity => !!e);
+  }
+
+  /** Commit an edited version of the given entities via the history. */
+  commitEntityEdit(before: Entity[], after: Entity[]): void {
+    if (before.length === 0) return;
+    this.history.execute(new ReplaceEntities(before, after));
+  }
+
   cursorWorldReadout(): Vec2 {
     return this.snapResult?.point ?? this.cursorRaw;
   }
@@ -573,6 +669,7 @@ export class Editor {
     this.history.onChange = () => {
       this.onStatusChange?.();
       this.requestRender();
+      this.refresh3D();
     };
     this.renderer = new Renderer(this.canvas, this.doc, this.vp);
     this.snap = new SnapEngine(this.doc, this.vp);
@@ -581,7 +678,15 @@ export class Editor {
     this.doc.onChange(() => {
       this.onStatusChange?.();
       this.requestRender();
+      this.refresh3D();
     });
+    if (this.viewer3d) {
+      // Point a fresh viewer at the new document.
+      this.viewer3d.dispose();
+      this.viewer3d = null;
+      this.viewerPromise = null;
+      if (this.mode === "3d") void this.ensureViewer().then((v) => v.activate());
+    }
     this.zoomExtents();
     this.onStatusChange?.();
   }

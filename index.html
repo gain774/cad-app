@@ -10,25 +10,82 @@
   </head>
   <body>
     <div id="app">
-      <header id="topbar">
+      <!-- ===== Menu bar ===== -->
+      <header id="menubar">
         <button id="panel-toggle" data-cmd="TOGGLE_PANEL" title="パネル" aria-label="パネル">☰</button>
         <div class="brand">CAD<span>App</span></div>
-        <div class="toolgroup" id="file-tools">
-          <button data-cmd="NEW" title="新規">新規</button>
-          <button data-cmd="OPEN" title="開く (JSON)">開く</button>
-          <button data-cmd="SAVE" title="保存 (JSON)">保存</button>
-          <span class="sep"></span>
-          <button data-cmd="IMPORT_DXF" title="DXF 読込">DXF読込</button>
-          <button data-cmd="EXPORT_DXF" title="DXF 書出">DXF書出</button>
-          <button data-cmd="EXPORT_SVG" title="SVG 書出">SVG書出</button>
-        </div>
-        <div class="toolgroup" id="edit-tools">
-          <button data-cmd="UNDO" title="元に戻す (Ctrl+Z)">↶</button>
-          <button data-cmd="REDO" title="やり直し (Ctrl+Y)">↷</button>
-          <button data-cmd="ZOOM_EXTENTS" title="全体表示">⤢</button>
+
+        <nav id="menus">
+          <div class="menu">
+            <button class="menu-btn">ファイル</button>
+            <ul class="menu-list">
+              <li data-cmd="NEW">新規</li>
+              <li data-cmd="OPEN">開く (JSON)…</li>
+              <li data-cmd="SAVE">保存 (JSON)</li>
+              <li class="divider"></li>
+              <li data-cmd="IMPORT_DXF">DXF 読込…</li>
+              <li data-cmd="EXPORT_DXF">DXF 書出</li>
+              <li data-cmd="EXPORT_SVG">SVG 書出</li>
+            </ul>
+          </div>
+          <div class="menu">
+            <button class="menu-btn">編集</button>
+            <ul class="menu-list">
+              <li data-cmd="UNDO">元に戻す <span class="hint">Ctrl+Z</span></li>
+              <li data-cmd="REDO">やり直し <span class="hint">Ctrl+Y</span></li>
+              <li class="divider"></li>
+              <li data-cmd="MOVE">移動</li>
+              <li data-cmd="COPY">複写</li>
+              <li data-cmd="ERASE">削除 <span class="hint">Del</span></li>
+            </ul>
+          </div>
+          <div class="menu">
+            <button class="menu-btn">作図</button>
+            <ul class="menu-list">
+              <li data-cmd="TOOL_line">線 <span class="hint">L</span></li>
+              <li data-cmd="TOOL_polyline">連続線 <span class="hint">P</span></li>
+              <li data-cmd="TOOL_rect">矩形 <span class="hint">R</span></li>
+              <li data-cmd="TOOL_circle">円 <span class="hint">C</span></li>
+              <li data-cmd="TOOL_arc">円弧 <span class="hint">A</span></li>
+              <li data-cmd="TOOL_text">文字 <span class="hint">T</span></li>
+            </ul>
+          </div>
+          <div class="menu">
+            <button class="menu-btn">表示</button>
+            <ul class="menu-list">
+              <li data-cmd="ZOOM_EXTENTS">全体表示 <span class="hint">ZE</span></li>
+              <li class="divider"></li>
+              <li data-cmd="MODE_2D">2D 表示</li>
+              <li data-cmd="MODE_3D">3D 表示</li>
+            </ul>
+          </div>
+          <div class="menu">
+            <button class="menu-btn">3D</button>
+            <ul class="menu-list">
+              <li data-cmd="MODE_3D">3D 表示に切替</li>
+              <li class="divider"></li>
+              <li data-cmd="VIEW3D_iso">アイソメ</li>
+              <li data-cmd="VIEW3D_top">上面</li>
+              <li data-cmd="VIEW3D_front">正面</li>
+              <li data-cmd="VIEW3D_right">右側面</li>
+              <li class="divider"></li>
+              <li data-cmd="ZOOM_EXTENTS">フィット</li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="spacer"></div>
+
+        <button class="menu-btn ghost" data-cmd="OPEN_SETTINGS" title="設定">⚙ 設定</button>
+
+        <!-- 2D / 3D segmented switch -->
+        <div id="mode-switch" role="group" aria-label="表示モード">
+          <button data-mode="2d" class="active">2D</button>
+          <button data-mode="3d">3D</button>
         </div>
       </header>
 
+      <!-- ===== Workspace ===== -->
       <div id="workspace">
         <aside id="toolbar">
           <button data-tool="select" class="active" title="選択 (Esc)">▏選択</button>
@@ -46,16 +103,30 @@
 
         <div id="canvas-host">
           <canvas id="cad-canvas"></canvas>
+          <div id="view3d-controls">
+            <button data-cmd="VIEW3D_iso" title="アイソメ">アイソメ</button>
+            <button data-cmd="VIEW3D_top" title="上面">上面</button>
+            <button data-cmd="VIEW3D_front" title="正面">正面</button>
+            <button data-cmd="VIEW3D_right" title="右側面">右</button>
+            <button data-cmd="ZOOM_EXTENTS" title="フィット">フィット</button>
+          </div>
           <div id="coord-readout"></div>
+          <div id="mode-badge">2D</div>
         </div>
 
         <div id="panel-backdrop"></div>
         <aside id="sidebar">
+          <div class="panel" id="properties-panel">
+            <h3>プロパティ</h3>
+            <div id="properties"></div>
+          </div>
+
           <div class="panel">
             <h3>レイヤ</h3>
             <div id="layer-list"></div>
             <button id="add-layer">＋ レイヤ追加</button>
           </div>
+
           <div class="panel">
             <h3>スナップ</h3>
             <label><input type="checkbox" id="snap-grid" checked /> グリッド</label>
@@ -65,6 +136,7 @@
             <label><input type="checkbox" id="snap-intersect" checked /> 交点</label>
             <label class="grid-size">グリッド間隔 <input type="number" id="grid-size" value="10" min="0.001" step="1" /></label>
           </div>
+
           <div class="panel">
             <h3>情報</h3>
             <div id="stats"></div>
@@ -72,16 +144,71 @@
         </aside>
       </div>
 
+      <!-- ===== Status bar ===== -->
       <footer id="statusbar">
         <div id="prompt-line">
           <span id="prompt-label">コマンド:</span>
           <input id="command-input" type="text" autocomplete="off" spellcheck="false"
                  placeholder="コマンドまたは座標を入力 (例: LINE, 100,50, @50,0, @100&lt;45)" />
         </div>
+        <div id="status-toggles">
+          <button id="tg-snap" class="on" title="オブジェクトスナップ">スナップ</button>
+          <button id="tg-grid" class="on" title="グリッド表示">グリッド</button>
+          <button id="tg-ortho" title="直交モード (F8)">直交</button>
+        </div>
         <div id="status-right">
           <span id="mouse-coords">0.000, 0.000</span>
         </div>
       </footer>
+    </div>
+
+    <!-- ===== Settings modal ===== -->
+    <div id="settings-overlay" class="modal-overlay" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="modal-header">
+          <h2 id="settings-title">設定</h2>
+          <button class="modal-close" data-cmd="CLOSE_SETTINGS" aria-label="閉じる">✕</button>
+        </div>
+        <div class="modal-body">
+          <section>
+            <h4>一般</h4>
+            <label class="row">グリッド間隔
+              <input type="number" id="set-grid-size" min="0.001" step="1" />
+            </label>
+            <label class="row">グリッド表示
+              <input type="checkbox" id="set-show-grid" checked />
+            </label>
+            <label class="row">テーマ
+              <select id="set-theme">
+                <option value="dark">ダーク</option>
+                <option value="light">ライト</option>
+              </select>
+            </label>
+          </section>
+          <section>
+            <h4>スナップ</h4>
+            <label class="row">スナップ許容 (px)
+              <input type="number" id="set-snap-tol" min="2" max="40" step="1" value="12" />
+            </label>
+          </section>
+          <section>
+            <h4>3D（新規レイヤの既定）</h4>
+            <label class="row">押し出しモード
+              <select id="set-extrude-mode">
+                <option value="wall">壁（高さ方向へ押し出し）</option>
+                <option value="plate">板（厚みとして押し出し）</option>
+                <option value="none">なし（平面）</option>
+              </select>
+            </label>
+            <label class="row">高さ / 厚み
+              <input type="number" id="set-extrude-height" min="0" step="10" value="100" />
+            </label>
+          </section>
+        </div>
+        <div class="modal-footer">
+          <button class="primary" data-cmd="CLOSE_SETTINGS">閉じる</button>
+        </div>
+      </div>
     </div>
 
     <input type="file" id="file-input" accept=".json,.dxf" style="display:none" />

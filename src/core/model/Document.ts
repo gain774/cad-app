@@ -3,11 +3,32 @@ import { emptyBounds, unionBounds } from "../math/geometry.ts";
 import { SpatialGrid } from "../spatial/SpatialGrid.ts";
 import { entityBounds, type Entity } from "./entities.ts";
 
+/** How a layer's 2D geometry is turned into 3D solids. */
+export type ExtrudeMode = "wall" | "plate" | "none";
+
 export interface Layer {
   name: string;
   color: string;
   visible: boolean;
   locked: boolean;
+  /** 3D extrusion behaviour for this layer. */
+  extrudeMode: ExtrudeMode;
+  /** Extrusion height / plate thickness in world units. */
+  height: number;
+  /** Base Z (elevation) the extrusion starts from. */
+  elevation: number;
+}
+
+export function defaultLayer(name: string, color: string): Layer {
+  return {
+    name,
+    color,
+    visible: true,
+    locked: false,
+    extrudeMode: "wall",
+    height: 100,
+    elevation: 0,
+  };
 }
 
 export type ChangeListener = () => void;
@@ -25,7 +46,7 @@ export class CadDocument {
   private listeners = new Set<ChangeListener>();
 
   constructor() {
-    this.layers.push({ name: "0", color: "#e8e8e8", visible: true, locked: false });
+    this.layers.push(defaultLayer("0", "#e8e8e8"));
   }
 
   onChange(fn: ChangeListener): () => void {
@@ -46,7 +67,7 @@ export class CadDocument {
   addLayer(name: string, color = "#8ab4f8"): Layer {
     let l = this.getLayer(name);
     if (!l) {
-      l = { name, color, visible: true, locked: false };
+      l = defaultLayer(name, color);
       this.layers.push(l);
       this.emit();
     }
@@ -127,7 +148,7 @@ export class CadDocument {
   clear(): void {
     this.entities.clear();
     this.grid.clear();
-    this.layers = [{ name: "0", color: "#e8e8e8", visible: true, locked: false }];
+    this.layers = [defaultLayer("0", "#e8e8e8")];
     this.activeLayer = "0";
     this.emit();
   }

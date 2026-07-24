@@ -35,6 +35,9 @@ export function importJson(text: string): CadDocument {
       color: l.color,
       visible: l.visible ?? true,
       locked: l.locked ?? false,
+      extrudeMode: l.extrudeMode ?? "wall",
+      height: l.height ?? 100,
+      elevation: l.elevation ?? 0,
     }));
   }
   doc.activeLayer = data.activeLayer && doc.getLayer(data.activeLayer)
