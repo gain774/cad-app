@@ -128,11 +128,24 @@ function runNamedCommand(cmd: string): void {
     case "CLOSE_SETTINGS":
       $("settings-overlay").hidden = true;
       break;
+    case "BOX_SELECT":
+      editor.setBoxSelect(!editor.boxSelect);
+      break;
     case "TOGGLE_PANEL":
       document.body.classList.toggle("panel-open");
       break;
   }
 }
+
+const boxBtn = document.querySelector<HTMLButtonElement>('#toolbar [data-cmd="BOX_SELECT"]');
+editor.onBoxSelectChange = (on) => {
+  boxBtn?.classList.toggle("active", on);
+  if (on) {
+    toolButtons.forEach((b) => b.classList.remove("active"));
+  } else {
+    toolButtons.forEach((b) => b.classList.toggle("active", b.dataset.tool === editor.activeToolName));
+  }
+};
 
 // Command-line keyword aliases.
 editor.commandHandlers = {
@@ -325,16 +338,16 @@ function refreshLayers(): void {
     const main = document.createElement("div");
     main.className = "layer-main";
 
-    const vis = document.createElement("button");
+    const vis = document.createElement("input");
+    vis.type = "checkbox";
     vis.className = "layer-vis";
-    vis.textContent = layer.visible ? "👁" : "—";
-    vis.title = "表示切替";
-    vis.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      layer.visible = !layer.visible;
+    vis.checked = layer.visible;
+    vis.title = "表示 / 非表示";
+    vis.addEventListener("click", (ev) => ev.stopPropagation());
+    vis.addEventListener("change", () => {
+      layer.visible = vis.checked;
       editor.requestRender();
       editor.refresh3D();
-      refreshLayers();
     });
 
     const swatch = document.createElement("input");
@@ -353,7 +366,7 @@ function refreshLayers(): void {
 
     const del = document.createElement("button");
     del.className = "layer-del";
-    del.textContent = "✕";
+    del.textContent = "×";
     del.title = "レイヤ削除";
     del.addEventListener("click", (ev) => {
       ev.stopPropagation();

@@ -63,6 +63,10 @@ export class Editor {
   private viewer3d: Viewer3D | null = null;
   showGrid = true;
 
+  /** Box (window) selection mode: dragging draws a selection rectangle. */
+  boxSelect = false;
+  onBoxSelectChange: ((on: boolean) => void) | null = null;
+
   // UI callbacks (wired up by main.ts).
   onPromptChange: ((text: string) => void) | null = null;
   onStatusChange: (() => void) | null = null;
@@ -119,12 +123,27 @@ export class Editor {
     this.tool = tool;
     this.preview = [];
     if (tool) {
+      this.setBoxSelect(false);
       tool.activate(this.ctx());
       this.onToolChange?.(tool.name);
     } else {
       this.onPromptChange?.("コマンド:");
       this.onToolChange?.("select");
     }
+    this.requestRender();
+  }
+
+  /** Toggle box (window) selection mode. */
+  setBoxSelect(on: boolean): void {
+    if (this.boxSelect === on) return;
+    this.boxSelect = on;
+    if (on) {
+      this.setTool(null);
+      this.onPromptChange?.("範囲選択: ドラッグで囲んで選択 (Escで解除)");
+    } else if (!this.tool) {
+      this.onPromptChange?.("コマンド:");
+    }
+    this.onBoxSelectChange?.(on);
     this.requestRender();
   }
 
@@ -317,8 +336,19 @@ export class Editor {
       return;
     }
 
-    // Select mode.
-    const hitId = this.hitTest(this.cursorRaw);
+    // Box-select mode: dragging always draws a selection rectangle (works with
+    // a mouse and with one finger — the main way to select on touch).
+    if (this.boxSelect) {
+      if (!e.shiftKey) this.selection.clear();
+      this.marquee = { x0: screen.x, y0: screen.y, x1: screen.x, y1: screen.y, crossing: false };
+      this.opType = "marquee";
+      this.onStatusChange?.();
+      this.requestRender();
+      return;
+    }
+
+    // Select mode. Use a more forgiving tolerance for touch (finger vs mouse).
+    const hitId = this.hitTest(this.cursorRaw, touch ? 16 : 9);
     if (hitId) {
       if (e.shiftKey) {
         if (this.selection.has(hitId)) this.selection.delete(hitId);
@@ -340,6 +370,7 @@ export class Editor {
       if (!e.shiftKey) this.selection.clear();
       this.marquee = { x0: screen.x, y0: screen.y, x1: screen.x, y1: screen.y, crossing: false };
       this.opType = "marquee";
+      this.onStatusChange?.();
     }
     this.requestRender();
   }
@@ -436,6 +467,13 @@ export class Editor {
         break;
       case "marquee":
         this.finalizeMarquee();
+        break;
+      case "pan":
+        // A tap on empty space (no drag) clears the selection on touch.
+        if (!this.opMoved && !this.tool && this.selection.size > 0) {
+          this.selection.clear();
+          this.onStatusChange?.();
+        }
         break;
       case "drag":
         if (this.dragging && this.dragBase) {
@@ -557,6 +595,7 @@ export class Editor {
         this.selection.clear();
         this.onStatusChange?.();
       }
+      this.setBoxSelect(false);
       this.setTool(null);
       this.requestRender();
       return;
